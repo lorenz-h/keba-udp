@@ -56,17 +56,33 @@ class KebaUDP:
             self.logger.error(f"did not receive response for command {command} within {RESPONSE_TIMEOUT} seconds")
             return None
 
-    def get_report(self, n: int):
+    def get_report(self, n: int, retries=10):
         assert n in (1, 2, 3) or n >= 100, f"Invalid report {n} must be one of (1,2,3)"
-        return json.loads(self.get_command_response(f"report {n}"))
+        try:
+            report = json.loads(self.get_command_response(f"report {n}"))
+            return report
+        except json.JSONDecodeError:
+            if retries > 0:
+                self.logger.warning("retrying get report, could not decode response")
+                return self.get_report(n, retries-1)
+            else:
+                raise
 
-    def set_currtime(self, current: int, delay: Optional[int] = None):
+    def set_currtime(self, current: int, delay: Optional[int] = None, retries=10):
         if delay is None:
             delay = 0
-        current = int(current)
+        current = int(float(current))
         delay = int(delay)
-        assert 6000 <= current <= 63000, f"Current value must lie between 6000 mA and 63000 mA"
+        assert 6000 <= current <= 63000 or current == 0, f"Current value must lie between 6000 mA and 63000 mA"
         assert 0 <= delay <= 860400, f"Delay must be between 0 and 860400 seconds."
         resp = self.get_command_response(f"currtime {current} {delay}")
-        assert resp == CONFIRMATION_MESSAGE, f"Delivered currtime signal but got invalid response {resp}"
-        self.logger.info("currtime command accepted")
+        if resp != CONFIRMATION_MESSAGE:
+            if retries > 0:
+                self.logger.warning("retrying currtime command, due to invalid response.")
+                return self.set_currtime(current, delay, retries-1)
+            else:
+                raise AssertionError(f"unexpected response {resp}. Reached maximum number of retries.")
+        else:
+            self.logger.info("currtime command accepted.")
+
+
