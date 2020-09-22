@@ -2,7 +2,7 @@ import select
 import socket
 import json
 import logging
-from typing import Optional
+from typing import Optional, List
 
 T_UDP_PAUSE = 0.1
 T_COM_PAUSE = 5.0
@@ -11,6 +11,20 @@ MAX_RESPONSE_SIZE = 512
 LOCAL_PORT = 7090
 RESPONSE_TIMEOUT = 0.2
 CONFIRMATION_MESSAGE = b'TCH-OK :done\n'
+
+KEBA_REPORT_SCHEMAS = {
+    "1": ["ID", "Product", "Serial", "Firmware", "COM-module",
+          "Backend", "timeQ", "Sec"],
+    "2": ["ID", "State", "Error1", "Error2", "Plug",
+          "AuthON", "Authreq", "Enable sys", "Enable user", "Max curr", "Max curr %",
+          "Curr HW", "Curr user", "Curr FS", "Tmo FS", "Curr timer", "Tmo CT",
+          "Setenergy", "Output", "Input", "Serial", "Sec"],
+    "3": ["ID", "U1", "U2", "U3", "I1", "I2", "I3", "P", "PF", "E pres",
+          "E total", "Serial", "Sec"],
+    "1xx": ["ID", "Session ID", "Curr HW", "E start", "E pres", "started[s]",
+            "ended[s]", "started", "ended", "reason", "timeQ", "RFID tag",
+            "RFID class", "Serial", "Sec"]
+}
 
 
 class KebaUDP:
@@ -60,8 +74,20 @@ class KebaUDP:
         assert n in (1, 2, 3) or n >= 100, f"Invalid report {n} must be one of (1,2,3)"
         try:
             report = json.loads(self.get_command_response(f"report {n}"))
+            schema: List = []
+            if n in (1, 2, 3):
+                schema = KEBA_REPORT_SCHEMAS[str(n)]
+            else:
+                schema = KEBA_REPORT_SCHEMAS["1xx"]
+
+            # validate that all keys in schema are present in the returned report
+            valid = True
+            for key in schema:
+                valid = valid and key in report
+            assert valid, f"incomplete or wrong report returned by Wallbox"
             return report
-        except json.JSONDecodeError:
+
+        except (json.JSONDecodeError, AssertionError):
             if retries > 0:
                 self.logger.warning("retrying get report, could not decode response")
                 return self.get_report(n, retries-1)
