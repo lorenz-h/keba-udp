@@ -42,7 +42,6 @@ class KebaUDP:
         self.udp_socket.bind(("0.0.0.0", LOCAL_PORT))
         self.udp_socket.connect((self.host, self.port))
         self.udp_socket.settimeout(None)
-        self.connection_buildup()
         return self
 
     def __del__(self):
